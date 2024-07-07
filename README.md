@@ -112,7 +112,7 @@ To use it with `clap`, or any similar library, the basic idea is to just ignore 
     $ ./myapp --verbose --files file1.txt file2.txt
     ```
 
-Or use stdin:
+    Or use stdin:
 
     ```bash
     $ echo "some input" | ./myapp --verbose

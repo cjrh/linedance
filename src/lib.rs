@@ -89,6 +89,12 @@ impl Iterator for FileInput {
     }
 }
 
+/// Creates a new FileInput iterator that reads lines from files specified by command-line arguments.
+/// If no files are specified, it reads from stdin.
+///
+/// # Errors
+///
+/// Returns an `io::Error` if there's an issue creating the FileInput.
 pub fn input() -> io::Result<impl Iterator<Item = io::Result<String>>> {
     FileInput::new("files")
 }

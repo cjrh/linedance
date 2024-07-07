@@ -2,5 +2,10 @@
 name = "linedance"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "iterator that streams lines either from files or stdin (like Python's fileinput)"
+homepage = "https://github.com/cjrh/linedance"
+repository = "https://github.com/cjrh/linedance"
+readme = "README.md"
 
 [dependencies]

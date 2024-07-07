@@ -2,16 +2,19 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 
-pub struct FileInput {
-    readers: Vec<Box<dyn Fn() -> io::Result<Box<dyn BufRead>>>>,
+type MakeReader = dyn Fn() -> io::Result<Box<dyn BufRead>>;
+
+struct FileInput {
+    // readers: Vec<Box<dyn Fn() -> io::Result<Box<dyn BufRead>>>>,
+    readers: Vec<Box<MakeReader>>,
     current_reader_idx: usize,
     current_reader: Option<Box<dyn BufRead>>,
     buffer: String,
 }
 
 impl FileInput {
-    pub fn new() -> io::Result<Self> {
-        let readers = Self::parse_args()?;
+    pub fn new(parameter_name: &str) -> io::Result<Self> {
+        let readers = Self::parse_args(parameter_name)?;
         Ok(FileInput {
             readers,
             current_reader_idx: 0,
@@ -20,9 +23,9 @@ impl FileInput {
         })
     }
 
-    fn parse_args() -> io::Result<Vec<Box<dyn Fn() -> io::Result<Box<dyn BufRead>>>>> {
+    fn parse_args(parameter_name: &str) -> io::Result<Vec<Box<MakeReader>>> {
         let args: Vec<String> = env::args().collect();
-        let file_args = Self::extract_file_args(&args);
+        let file_args = Self::extract_file_args(parameter_name, &args);
         if file_args.is_empty() {
             Ok(vec![Box::new(|| Ok(Box::new(BufReader::new(io::stdin())) as Box<dyn BufRead>))])
         } else {
@@ -35,11 +38,11 @@ impl FileInput {
         }
     }
 
-    fn extract_file_args(args: &[String]) -> Vec<String> {
+    fn extract_file_args(parameter_name: &str, args: &[String]) -> Vec<String> {
         let mut file_args = Vec::new();
         let mut reading_files = false;
         for arg in args.iter().skip(1) {
-            if arg == "--files" {
+            if *arg == format!("--{parameter_name}") {
                 reading_files = true;
             } else if reading_files && arg.starts_with('-') {
                 break;
@@ -68,7 +71,12 @@ impl Iterator for FileInput {
             }
 
             self.buffer.clear();
-            match self.current_reader.as_mut().expect("reader should be Some").read_line(&mut self.buffer) {
+            let reader = match self.current_reader.as_mut() {
+                Some(reader) => reader,
+                None => return Some(Err(io::Error::new(io::ErrorKind::Other, "reader should be Some"))),
+            };
+
+            match reader.read_line(&mut self.buffer) {
                 Ok(0) => {
                     self.current_reader_idx += 1;
                     self.current_reader = None;
@@ -82,5 +90,5 @@ impl Iterator for FileInput {
 }
 
 pub fn input() -> io::Result<impl Iterator<Item = io::Result<String>>> {
-    FileInput::new()
+    FileInput::new("files")
 }

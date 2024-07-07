@@ -2,12 +2,11 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 
-type Closure = Box<dyn Fn() -> io::Result<Box<dyn BufRead>>>;
-
 pub struct FileInput {
-    readers: Vec<Closure>,
+    readers: Vec<Box<dyn Fn() -> io::Result<Box<dyn BufRead>>>>,
     current_reader_idx: usize,
     current_reader: Option<Box<dyn BufRead>>,
+    buffer: String,
 }
 
 impl FileInput {
@@ -17,44 +16,38 @@ impl FileInput {
             readers,
             current_reader_idx: 0,
             current_reader: None,
+            buffer: String::new(),
         })
     }
 
-    /// Build a list of readers from the command line arguments.
-    /// If no files are provided, read from stdin.
-    fn parse_args() -> io::Result<Vec<Closure>> {
-        let mut readers = Vec::new();
+    fn parse_args() -> io::Result<Vec<Box<dyn Fn() -> io::Result<Box<dyn BufRead>>>>> {
         let args: Vec<String> = env::args().collect();
-        let mut reading_files = false;
+        let file_args = Self::extract_file_args(&args);
+        if file_args.is_empty() {
+            Ok(vec![Box::new(|| Ok(Box::new(BufReader::new(io::stdin())) as Box<dyn BufRead>))])
+        } else {
+            Ok(file_args.into_iter().map(|arg| {
+                Box::new(move || {
+                    let file = File::open(&arg)?;
+                    Ok(Box::new(BufReader::new(file)) as Box<dyn BufRead>)
+                }) as Box<dyn Fn() -> io::Result<Box<dyn BufRead>>>
+            }).collect())
+        }
+    }
 
+    fn extract_file_args(args: &[String]) -> Vec<String> {
+        let mut file_args = Vec::new();
+        let mut reading_files = false;
         for arg in args.iter().skip(1) {
             if arg == "--files" {
                 reading_files = true;
-                continue;
-            }
-
-            if reading_files && arg.starts_with('-') {
+            } else if reading_files && arg.starts_with('-') {
                 break;
-            }
-
-            if reading_files {
-                let arg = arg.to_string();
-                let cb: Closure = Box::new(move || {
-                    let file = File::open(&arg)?;
-                    Ok(Box::new(BufReader::new(file)) as Box<dyn BufRead>)
-                });
-                readers.push(cb);
+            } else if reading_files {
+                file_args.push(arg.clone());
             }
         }
-
-        if readers.is_empty() {
-            let cb: Closure = Box::new(|| {
-                Ok(Box::new(BufReader::new(io::stdin())) as Box<dyn BufRead>)
-            });
-            readers.push(cb);
-        }
-
-        Ok(readers)
+        file_args
     }
 }
 
@@ -74,14 +67,14 @@ impl Iterator for FileInput {
                 }
             }
 
-            let mut line = String::new();
-            match self.current_reader.as_mut().unwrap().read_line(&mut line) {
+            self.buffer.clear();
+            match self.current_reader.as_mut().expect("reader should be Some").read_line(&mut self.buffer) {
                 Ok(0) => {
                     self.current_reader_idx += 1;
                     self.current_reader = None;
                     continue;
                 }
-                Ok(_) => return Some(Ok(line.trim_end().to_string())),
+                Ok(_) => return Some(Ok(self.buffer.trim_end().to_string())),
                 Err(e) => return Some(Err(e)),
             }
         }
